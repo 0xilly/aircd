@@ -25,5 +25,5 @@ profile.cov
 .env
 
 # Editor/IDE
-# .idea/
-# .vscode/
+.idea/
+.vscode/
