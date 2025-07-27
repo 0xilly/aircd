@@ -1,6 +1,7 @@
 package libpbn
 
 import (
+	"fmt"
 	"image"
 	"image/color"
 	"image/png"
@@ -16,14 +17,7 @@ type Parser struct {
 	Data   *image.RGBA
 }
 
-var (
-	UNICODE_COLOR_START rune = 0x100000
-	UNICODE_COLOR_END   rune = 0x10FFFF
-	UNICODE_INDEX_START rune = 0x02FA1E
-	UNICODE_RUN_MARK    rune = 0x00FFFF
-)
-
-func Create(width int, height int) Parser {
+func CreateParser(width int, height int) Parser {
 	return Parser{
 		Width:  width,
 		Height: height,
@@ -106,25 +100,12 @@ func (p Parser) parseV2(line []rune) bool {
 	current_color := p.getColor(line, 0)
 	index := 2
 	for {
-		if (index + 1) >= len(line) {
+		if (index + 1) > len(line) {
 			break
 		}
 		if p.IsColorRune(line, index) {
 			// Handle color change
 			current_color = p.getColor(line, index)
-			index += 2
-			continue
-		}
-		if line[index] == UNICODE_RUN_MARK {
-			// Handle RLE block
-			if index > len(line) {
-				break
-			}
-			run_length := int(line[index] - UNICODE_INDEX_START)
-			run_start := int(line[index+1] - UNICODE_INDEX_START)
-			for i := range run_length {
-				p.Data.Set((run_start+i)%p.Width, (run_start+i)/p.Width, current_color)
-			}
 			index += 2
 			continue
 		}
@@ -137,6 +118,20 @@ func (p Parser) parseV2(line []rune) bool {
 			index += 1
 			continue
 		}
+		if line[index] == UNICODE_RUN_MARK {
+			// Handle RLE block
+			if index > len(line) {
+				break
+			}
+			run_length := int(line[index+1] - UNICODE_INDEX_START)
+			run_start := int(line[index+2] - UNICODE_INDEX_START)
+			for i := range run_length {
+				p.Data.Set((run_start+i)%p.Width, (run_start+i)/p.Width, current_color)
+			}
+			index += 2
+			continue
+		}
+		fmt.Println("Invalid rune found while processing", index, len(line))
 		return false
 	}
 	return true

@@ -2,16 +2,19 @@ package main
 
 import (
 	"fmt"
-	"image/color"
+	"image"
+	"image/draw"
+	"image/png"
 	"io"
 	"log"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/0xilly/aircd/libpbn"
 )
 
-func main() {
+func parse_test() {
 	file, err := os.Open(os.Args[1])
 	if err != nil {
 		log.Fatalln(err)
@@ -36,12 +39,11 @@ func main() {
 	// const canvas_height = 92
 	// const canvas_width = 192
 	// const canvas_height = 144
-	canvas := libpbn.Create(canvas_width, canvas_height)
+	canvas := libpbn.CreateParser(canvas_width, canvas_height)
 	canvas.Clear(nil)
 
 	total_lines := 0
-	frame := 0
-	base_filename := "out/frame_%07d.png"
+	valid_lines := 0
 
 	for {
 		n, err := file.Read(buffer)
@@ -63,23 +65,70 @@ func main() {
 			}
 			command := strings.Split(line, "\t")[2]
 			valid := canvas.ParseLine(command)
+			total_lines++
 			if valid {
-				total_lines++
-				if total_lines < 111360 {
-					canvas.Clear(&color.RGBA{255, 255, 255, 255})
-					continue
-				}
-				// if total_lines > 110762 {
-				// 	break
-				// }
-				if total_lines%5 == 0 {
-					// if total_lines > 27550 && total_lines < 28000 {
-					canvas.SaveToFile(fmt.Sprintf(base_filename, frame))
-					frame++
-				}
+				valid_lines++
 			}
 		}
 	}
-	// fmt.Printf(strconv.Itoa(total_lines))
-	// canvas.SaveToFile(fmt.Sprintf(base_filename, total_lines))
+	fmt.Printf("Total: %d\nValid: %d\n", total_lines, valid_lines)
+}
+
+func encode_test() {
+	file, err := os.Open(os.Args[1])
+	if err != nil {
+		log.Fatalln(err)
+	}
+	defer file.Close()
+	img, err := png.Decode(file)
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	bounds := img.Bounds()
+	rgbaImage := image.NewRGBA(image.Rect(0, 0, bounds.Dx(), bounds.Dy()))
+	draw.Draw(rgbaImage, rgbaImage.Bounds(), img, bounds.Min, draw.Src)
+
+	max_length := 1000000
+
+	canvas_width := bounds.Dx()
+	canvas_height := bounds.Dy()
+	encoder := libpbn.CreateEncoder(canvas_width, canvas_height, max_length)
+	parser := libpbn.CreateParser(canvas_width, canvas_height)
+
+	commands := make([]string, 0)
+	start_time := time.Now()
+
+	encoder.Clear(nil)
+	parser.Clear(nil)
+	start_time = time.Now()
+	commands = encoder.EncodeFrameV1(rgbaImage, &max_length)
+	fmt.Printf("V1 encoded in %d lines\n", len(commands))
+	fmt.Printf("encoding took %s\n", time.Since(start_time).String())
+	for _, command := range commands {
+		parser.ParseLine(command)
+	}
+	parser.SaveToFile("v1.png")
+
+	encoder.Clear(nil)
+	parser.Clear(nil)
+	start_time = time.Now()
+	commands = encoder.EncodeFrameV2(rgbaImage, &max_length)
+	fmt.Printf("V2 encoded in %d lines\n", len(commands))
+	fmt.Printf("encoding took %s\n", time.Since(start_time).String())
+	valid_count := 0
+	for _, command := range commands {
+		fmt.Println(len([]rune(command)))
+		valid := parser.ParseLine(command)
+		if valid {
+			valid_count++
+		}
+	}
+	fmt.Printf("V2 decoded %d valid lines\n", valid_count)
+	parser.SaveToFile("v2.png")
+}
+
+func main() {
+	// parse_test()
+	encode_test()
 }
